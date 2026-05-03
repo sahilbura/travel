@@ -1,0 +1,132 @@
+// schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// User model:
+// CRITICAL FIX HERE: Use `cuid()` or `uuid()` instead of `auto()`
+// for the default ID generation. This allows the ID to be a simple string.
+// NextAuth will then handle inserting the Google ID for new OAuth users.
+model User {
+  id               String    @id @default(cuid()) @map("_id") // Use cuid() or uuid()
+  email            String    @unique
+  name             String?
+  password         String? // Keep this if you're also using Credentials provider
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  resetToken       String?
+  resetTokenExpiry DateTime?
+
+  // Relationships required by NextAuth.js
+  accounts Account[]
+  sessions Session[]
+
+  // Your existing relationships
+  trips    Trip[]
+}
+
+// Account model (standard for NextAuth.js)
+// `id` is a MongoDB ObjectId
+// `userId` is a String, referencing User.id which is now a String
+model Account {
+  id                String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String // Matches User.id which is now a plain String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.String
+  access_token      String? @db.String
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.String
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+// Session model (standard for NextAuth.js)
+// `id` is a MongoDB ObjectId
+// `userId` is a String, referencing User.id which is now a String
+model Session {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  sessionToken String   @unique
+  userId       String // Matches User.id which is now a plain String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// VerificationToken model (standard for NextAuth.js, if using email provider)
+model VerificationToken {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+
+// Trip model:
+// `userId` must now be `String` because it references `User.id` (which is a String)
+model Trip {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  title          String
+  destination    String
+  destinationLat Float?
+  destinationLng Float?
+  startDate      DateTime
+  endDate        DateTime
+  interests      Json?
+  budget         Int?
+  userId         String // CRITICAL FIX HERE: Changed from @db.ObjectId to String
+  user           User     @relation(fields: [userId], references: [id])
+  days           Day[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// Day model (no changes needed)
+model Day {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  tripId    String   @db.ObjectId
+  date      DateTime
+  dayIndex  Int
+  trip      Trip     @relation(fields: [tripId], references: [id])
+  activities Activity[]
+  summary   String?
+}
+
+// Activity model (no changes needed)
+model Activity {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  dayId       String   @db.ObjectId
+  name        String
+  type        String?
+  address     String?
+  lat         Float?
+  lng         Float?
+  time        String?
+  description String?
+  notes       String?
+  startTime   String?
+  endTime     String?
+  aiSummary   String?
+  budget      Int?
+  fictional   Boolean  @default(false)
+  day         Day      @relation(fields: [dayId], references: [id])
+}
